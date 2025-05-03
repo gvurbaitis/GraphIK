@@ -223,7 +223,7 @@ class RobotURDF(object):
         labels = [label.format(i) for i in range(n)]
         return labels
 
-    def make_Revolute3d(self, ub, lb, randomized_links=False, randomize_percentage=0.4):
+    def make_Revolute3d(self, ub, lb, randomized_links = False, randomize_percentage = 0.4):
         # if all the child lists have len 1, then chain, otherwise tree
         params = {}
 
@@ -234,28 +234,18 @@ class RobotURDF(object):
 
         T_list = list(self.T_zero.values())
         if randomized_links:
-            T_mod = T_list.copy()
-            for idx in range(len(T_list) - 1):
-                T_delta = T_list[idx].inv().dot(T_list[idx + 1])  # delta between links
-
-                # --- Randomize translation ---
-                t_delta = T_delta.trans * ((1 - randomize_percentage) + 2 * randomize_percentage * np.random.rand())
+            T_mod = T_list
+            for idx in range(len(T_list)-1):
+                T_delta = T_list[idx].inv().dot(T_list[idx+1]) # delta translation
+                t_delta = T_delta.trans*((1-randomize_percentage) + 2*randomize_percentage*np.random.rand()) # variation
                 t_delta[np.abs(t_delta) < 1e-6] = 0
                 T_delta.trans = t_delta
-
-                # --- Randomize rotation ---
-                if randomize_percentage > 0:
-                    rand_axis = normalize(np.random.randn(3))
-                    rand_angle = randomize_percentage * np.pi * (2 * np.random.rand() - 1)
-                    R_perturb = SO3.exp(rand_axis * rand_angle).as_matrix()
-                    T_delta.rot = R_perturb @ T_delta.rot
-
-                # Update next transform in chain
-                T_mod[idx + 1] = T_mod[idx].dot(T_delta)
+                T_mod[idx+1] = T_mod[idx].dot(T_delta)
             T_list = T_mod
 
         # Assign Transforms
         T_labels = self.get_graphik_labels(joints)
+        # T_zero = dict(zip(T_labels, self.T_zero.values()))
         T_zero = dict(zip(T_labels, T_list))
         T0 = T_zero["p0"]
         for key, val in T_zero.items():
