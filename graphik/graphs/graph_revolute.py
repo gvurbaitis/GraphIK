@@ -398,6 +398,52 @@ def random_revolute_robot_graph(
     graph = ProblemGraphRevolute(robot)
     return graph
 
+def random_revolute_robot_graph_non_coplanar(
+    n: int, a_range=(-0.5, 0.5), d_range=(0, 0.5), modified_dh: bool = False
+) -> ProblemGraphRevolute:
+    params = {
+        "a": [],
+        "alpha": [],
+        "d": [],
+        "theta": [],
+        "num_joints": n,
+        "modified_dh": modified_dh,
+    }
+    # we fix the first joint for simplicity
+    params["alpha"] += [-np.pi/2 + np.pi * np.random.randint(2)]
+    params["a"] += [0]
+    params["d"] += [(d_range[0] + (d_range[1] - d_range[0]) * np.random.rand()) * np.random.randint(2)]
+    params["theta"] += [0]
+    
+    for _ in range(n-2):
+        params["theta"] += [0]
+        # Still keep the restriction on sequential parallel rotation axes
+        if (len(params["alpha"]) > 1) and ((params["alpha"][-1] == 0) and (params["alpha"][-2] == 0)):
+            params["alpha"] += [-np.pi/2 + (np.pi) * np.random.randint(2)]
+        else:
+            params["alpha"] += [(-np.pi/2 + np.pi * np.random.randint(2)) * (np.random.randint(4) > 0)]
+        
+        # MODIFIED: Allow both a and d to be non-zero (non-coplanar axes)
+        params["a"] += [a_range[0] + (a_range[1] - a_range[0]) * np.random.rand()]
+        params["d"] += [d_range[0] + (d_range[1] - d_range[0]) * np.random.rand()]
+        
+        # Optionally add randomness to make some axes still coplanar
+        # Uncomment if you want some joints to still be coplanar
+        # if np.random.random() < 0.3:  # 30% chance to make axes coplanar
+        #     if np.random.random() < 0.5:
+        #         params["a"][-1] = 0  # Make a zero
+        #     else:
+        #         params["d"][-1] = 0  # Make d zero
+            
+    params["alpha"] += [0]
+    params["a"] += [0]
+    params["d"] += [(d_range[0] + (d_range[1] - d_range[0]) * np.random.rand()) * np.random.randint(2)]
+    params["theta"] += [0]
+    
+    robot = RobotRevolute(params)
+    graph = ProblemGraphRevolute(robot)
+    return graph
+
 if __name__ == "__main__":
     import graphik
     from graphik.utils.roboturdf import RobotURDF

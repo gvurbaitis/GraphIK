@@ -223,7 +223,7 @@ class RobotURDF(object):
         labels = [label.format(i) for i in range(n)]
         return labels
 
-    def make_Revolute3d(self, ub, lb, randomized_links=False, randomize_percentage=0.4):
+    def make_Revolute3d(self, ub, lb, randomized_links = False, randomize_percentage = 0.4):
         # if all the child lists have len 1, then chain, otherwise tree
         params = {}
 
@@ -234,28 +234,87 @@ class RobotURDF(object):
 
         T_list = list(self.T_zero.values())
         if randomized_links:
-            T_mod = T_list.copy()
-            for idx in range(len(T_list) - 1):
-                T_delta = T_list[idx].inv().dot(T_list[idx + 1])  # delta between links
-
-                # --- Randomize translation ---
-                t_delta = T_delta.trans * ((1 - randomize_percentage) + 2 * randomize_percentage * np.random.rand())
+            T_mod = T_list
+            for idx in range(len(T_list)-1):
+                T_delta = T_list[idx].inv().dot(T_list[idx+1]) # delta translation
+                t_delta = T_delta.trans*((1-randomize_percentage) + 2*randomize_percentage*np.random.rand()) # variation
                 t_delta[np.abs(t_delta) < 1e-6] = 0
                 T_delta.trans = t_delta
-
-                # --- Randomize rotation ---
-                if randomize_percentage > 0:
-                    rand_axis = normalize(np.random.randn(3))
-                    rand_angle = randomize_percentage * np.pi * (2 * np.random.rand() - 1)
-                    R_perturb = SO3.exp(rand_axis * rand_angle).as_matrix()
-                    T_delta.rot = R_perturb @ T_delta.rot
-
-                # Update next transform in chain
-                T_mod[idx + 1] = T_mod[idx].dot(T_delta)
+                T_mod[idx+1] = T_mod[idx].dot(T_delta)
             T_list = T_mod
 
         # Assign Transforms
         T_labels = self.get_graphik_labels(joints)
+        # T_zero = dict(zip(T_labels, self.T_zero.values()))
+        T_zero = dict(zip(T_labels, T_list))
+        T0 = T_zero["p0"]
+        for key, val in T_zero.items():
+            T_zero[key] = T0.inv().dot(val)
+        params["T_zero"] = T_zero
+        params["num_joints"] = self.n_q_joints
+
+        l = 0
+        for cl in self.parents.values():
+            l += len(cl)
+        if l == len(self.parents.keys()) - 1:
+            params["joint_limits_upper"] = ub
+            params["joint_limits_lower"] = lb
+            return RobotRevolute(params)
+        else:
+            return RobotRevolute(params)
+
+    def make_Revolute3d_non_coplanar(self, ub, lb, randomized_links = False, randomize_percentage = 0.4):
+        # if all the child lists have len 1, then chain, otherwise tree
+        params = {}
+
+        # assign parents
+        joints = list(self.T_zero.keys())
+        self.get_parents(joints)
+        params["parents"] = self.parents
+
+        T_list = list(self.T_zero.values())
+        if randomized_links:
+            T_mod = T_list
+            for idx in range(len(T_list)-1):
+                T_delta = T_list[idx].inv().dot(T_list[idx+1]) # delta translation
+                t_delta = T_delta.trans*((1-randomize_percentage) + 2*randomize_percentage*np.random.rand()) # variation
+                t_delta[np.abs(t_delta) < 1e-6] = 0
+                T_delta.trans = t_delta
+                T_mod[idx+1] = T_mod[idx].dot(T_delta)
+            T_list = T_mod
+
+        # Add randomization for joint rotation axes
+        if randomized_links:
+            axis_randomization_factor=0.2
+            for idx in range(len(T_list)):
+                # Extract the rotation matrix from the transformation
+                R = T_list[idx].rot
+                
+                # For full randomization (factor=1), we want to be able to rotate to any direction
+                # For no randomization (factor=0), we want no change
+                # Scale the maximum angle proportionally to the randomization factor
+                # π/2 (90°) represents complete randomization - the axis can point anywhere in a hemisphere
+                max_angle = (np.pi/2) * axis_randomization_factor
+                
+                # Generate random angles within the range determined by the randomization factor
+                angle_x = np.random.uniform(-max_angle, max_angle)
+                angle_y = np.random.uniform(-max_angle, max_angle)
+                angle_z = np.random.uniform(-max_angle, max_angle)
+                
+                # Create rotation matrices for these perturbations
+                Rx = SO3.rotx(angle_x)
+                Ry = SO3.roty(angle_y)
+                Rz = SO3.rotz(angle_z)
+                
+                # Apply the perturbations to the original rotation
+                R_perturbed = R.dot(Rx).dot(Ry).dot(Rz)
+                
+                # Update the transformation with the perturbed rotation
+                T_list[idx].rot = R_perturbed
+
+        # Assign Transforms
+        T_labels = self.get_graphik_labels(joints)
+        # T_zero = dict(zip(T_labels, self.T_zero.values()))
         T_zero = dict(zip(T_labels, T_list))
         T0 = T_zero["p0"]
         for key, val in T_zero.items():
